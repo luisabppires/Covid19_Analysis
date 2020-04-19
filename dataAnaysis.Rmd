@@ -41,18 +41,25 @@ knitr::opts_knit$set(width = 75)
 ```
 
 
+Necessary libraries for running the analysis.
 
-
-```{r, echo = FALSE}
+```{r}
 library(knitr)
-library(rmdformats)
+library(prettydoc)
 library(tidyverse)
 library(httr)
 library(jsonlite)
 library(plotly)
 library(kableExtra)
 library(zoo)
+```
 
+# Auxiliary functions
+
+Here are ome auxiliary dunctions to display the data in a consistent way.
+```{r}
+
+# make a pretty comparative table
 make_table_comparison = function(df, xvariable, yvariable, n = 10) {
   df = select(df, one_of(yvariable, xvariable, "country"))
   
@@ -76,13 +83,14 @@ make_table_comparison = function(df, xvariable, yvariable, n = 10) {
   
 }
 
+# make a pretty table
 make_table = function(df, n = 30) {
   df %>%  tail(n) %>%
     kable() %>%
     kable_styling()
 }
 
-
+# make a standard bar chart with parameterized axes
 chart_variable_bar = function(df, xvariable, yvariable, n = 30) {
   if (xvariable == "date")  {
     df = filter(df, date > Sys.Date() - n)
@@ -100,6 +108,7 @@ chart_variable_bar = function(df, xvariable, yvariable, n = 30) {
   
 }
 
+# make a standard line chart with parameterized axes
 chart_variable_line = function(df, xvariable, yvariable, n = 30) {
   if (xvariable == "date")  {
     df = filter(df, date > Sys.Date() - n)
@@ -117,7 +126,7 @@ chart_variable_line = function(df, xvariable, yvariable, n = 30) {
 }
 ```
 
-# Get the data
+# Get & prepare the data
 
 Here we get the data from  "https://pomber.github.io/covid19/timeseries.json". A few inconsistencies have been detected from worldmeter.
 
@@ -151,7 +160,7 @@ Here we do the following transformations
 ```{r}
 
 # find the last "."
-data = enframe(unlist(data_raw)) %>%
+data = enframe(unlist(data_json)) %>%
   mutate(position = str_locate_all(name, "\\.")) %>%
   rowwise() %>%
   mutate(position = max(position)) %>% 
@@ -295,7 +304,7 @@ data_clean =  data_clean %>%
 data_clean %>% select (country, date, starts_with(c("roll_mean"))) %>% make_table(10)
 
 ```
-# Chart
+# Analysis
 
 We can now how the results of the data preparation.
 
