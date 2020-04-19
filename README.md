@@ -15,10 +15,10 @@ Here we focus on Portugal, Spain, UK and Italy. Analysis performed:
 
 
 Data from John Hopkins with thanks:
-https://github.com/pomber/covid19
-https://github.com/CSSEGISandData/COVID-19
+1. https://github.com/pomber/covid19
+2. https://github.com/CSSEGISandData/COVID-19
 
-"This is the data repository for the 2019 Novel Coronavirus Visual Dashboard operated by the Johns Hopkins University Center for Systems Science and Engineering (JHU CSSE). Also, Supported by ESRI Living Atlas Team and the Johns Hopkins University Applied Physics Lab (JHU APL)."
+Description of the data from [2]: "This is the data repository for the 2019 Novel Coronavirus Visual Dashboard operated by the Johns Hopkins University Center for Systems Science and Engineering (JHU CSSE). Also, Supported by ESRI Living Atlas Team and the Johns Hopkins University Applied Physics Lab (JHU APL)."
 
 
 ![Example of Analysis](./images/example1.png)
