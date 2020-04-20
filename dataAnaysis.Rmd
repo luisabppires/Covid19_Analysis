@@ -345,6 +345,26 @@ data_clean = data %>%
 
 ```
 
+We can now compute daily numbers for the countries.
+
+```{r}
+
+data_clean = group_by(data_clean, country) %>%
+  mutate(
+    previous_deaths  = lag(deaths, n = 1, default = NA),
+    previous_confirmed  = lag(confirmed, n = 1, default = NA),
+    previous_recovered  = lag(recovered, n = 1, default = NA),
+    daily_deaths  = deaths - previous_deaths,
+    daily_confirmed  = confirmed - previous_confirmed,
+    daily_recovered  = recovered - previous_recovered ) %>% 
+  select(-starts_with("previous"))
+
+data_clean %>% 
+  select (country, date, starts_with("daily")) %>% 
+  make_table(10)
+
+```
+
 # User-defined parameters
 
 The user can now select the countries of interest and add extra information. For the countries that are of interest we need to add the population (in millions) and the day of lockdown.
@@ -376,43 +396,12 @@ data_clean = data_clean %>%
 
 ```
 
-We can now compute daily numbers for the countries of interest.
-
-```{r}
-
-data_clean = group_by(data_clean, country) %>%
-  mutate(
-    previous_deaths  = lag(deaths, n = 1, default = NA),
-    previous_confirmed  = lag(confirmed, n = 1, default = NA),
-    previous_recovered  = lag(recovered, n = 1, default = NA),
-    daily_deaths  = deaths - previous_deaths,
-    daily_confirmed  = confirmed - previous_confirmed,
-    daily_recovered  = recovered - previous_recovered ) %>% 
-  select(-starts_with("previous"))
-
-data_clean %>% 
-  select (country, date, starts_with("daily")) %>% 
-  make_table(10)
-
-```
-
 
 # Analysis
 
-We can now how the results of the data preparation.
+In order to better compare countries and measures, we add a few reference columns such as *days since lock-down* and *days since 50th death reported*.
 
-* Daily  confirmed cases
-
-```{r}
-
-chart_variable_bar(df = data_clean,
-                  xvariable = "date", 
-                  yvariable = "daily_confirmed",
-                  last_n_days = 20)
-
-```
-
-## Changing reference points
+## Adding reference dates
 
 We now add a few reference points.
 
@@ -458,7 +447,11 @@ data_clean %>%
 
 # Comparative analysis
 
-We can do now comparative analysis between countries.
+We can do now comparative analysis between countries. The folowing flags help define the anaysis:
+
+* *per_million = T* indicates the y-variable is divided by the country's population (in_millions)
+* *per_increase = T* indicates the y-variable is measured in percentage increase (%) from the day before
+* *rolling = T* ndicates the y-variable is computed using a 7-day rolling average
 
 ## Standard charts
 
