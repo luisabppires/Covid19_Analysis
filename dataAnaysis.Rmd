@@ -8,42 +8,47 @@ output:
     highlight: github
 ---
 
-This shows an example of an analysis using the daily country data on number of deaths, recovered and confirmed cases of COVID 19. 
+
+This markdown shows an example of an analysis using the daily country data on number of deaths, recovered and confirmed cases of COVID 19. 
 
 Here we focus on Portugal, Spain, UK and Italy. Analysis performed:
 
 1. Daily differences (absolute,  percentage and 7-day rolling average)
 2. % differences in accumulated data 
 3. indicators per million inhabitants
-4. Analysis of reference points (days since lockdown, days since 50th death reported)
+4. Analysis of reference points (days since lock down, days since 50th death reported)
 
 
 Data from John Hopkins with thanks:
-https://github.com/pomber/covid19
-https://github.com/CSSEGISandData/COVID-19
 
-"This is the data repository for the 2019 Novel Coronavirus Visual Dashboard operated by the Johns Hopkins University Center for Systems Science and Engineering (JHU CSSE). Also, Supported by ESRI Living Atlas Team and the Johns Hopkins University Applied Physics Lab (JHU APL)."
+1. https://github.com/pomber/covid19
+2. https://github.com/CSSEGISandData/COVID-19
+
+Description of the data from [2]: "This is the data repository for the 2019 Novel Coronavirus Visual Dashboard operated by the Johns Hopkins University Center for Systems Science and Engineering (JHU CSSE). Also, Supported by ESRI Living Atlas Team and the Johns Hopkins University Applied Physics Lab (JHU APL)."
 
 
 ```{r setup, echo=FALSE,  cache=FALSE, warning=FALSE, message=FALSE}
 
 knitr::opts_chunk$set(
   echo = TRUE,
-  cache = TRUE,
+  cache = FALSE,
   prompt = FALSE,
-  tidy = TRUE,
+  tidy = FALSE,
   comment = NA,
   message = FALSE,
   warning = FALSE
 )
+
 knitr::opts_knit$set(width = 75)
 
 ```
 
+# Setup
 
 Necessary libraries for running the analysis.
 
 ```{r}
+
 library(knitr)
 library(prettydoc)
 library(tidyverse)
@@ -52,25 +57,94 @@ library(jsonlite)
 library(plotly)
 library(kableExtra)
 library(zoo)
+
 ```
 
 # Auxiliary functions
 
-Here are ome auxiliary dunctions to display the data in a consistent way.
-```{r}
+Here are some auxiliary functions to display the data in a consistent way.
+```{r, echo=TRUE}
 
-# make a pretty comparative table
-make_table_comparison = function(df, xvariable, yvariable, n = 10) {
-  df = select(df, one_of(yvariable, xvariable, "country"))
+# compute variable per million inhabitants
+# usage:
+# df %>%  per_million_inhab(.,var_columns=c("deaths","recovered"))
+per_million_inhab = function(df, var_columns){
+  
+df = df %>%
+    mutate_at(.vars = vars(var_columns), 
+              .funs = funs(round(./population, 2)))
+
+}
+
+# compute variable in a 7-day rolling average basis
+# usage:
+# df %>%  rolling_aver_7(.,var_columns=c("deaths","recovered"))
+rolling_aver_7 = function(df, var_columns){
+df = df %>%
+    mutate_at(.vars = vars(var_columns), 
+              .funs = funs(round(
+                rollmean(., 7, align="right",na.pad = T),
+                2)))
+
+}
+
+# compute the variable's percentage increase
+# usage:
+# df %>%  perc_increase(.,var_columns=c("deaths","recovered"))
+perc_increase = function(df, var_columns){
+df = df %>%
+    mutate_at(.vars = vars(var_columns), 
+              .funs = funs(round(
+                (.-lag(., n = 1, default = NA))/lag(., n = 1, default = NA),
+                2)*100))
+
+}
+
+
+# add all the transformations together
+# usage:
+# df %>%  transform_data(.,var_columns=c("deaths","recovered"), per_million = T)
+transform_data = function (df, var_columns,  per_million = F, perc_inc = F, rolling = F ){
+
+  if(per_million) df  = df %>%  per_million_inhab(.,var_columns=var_columns)
+  if(perc_inc) df  = df %>%  perc_increase(.,var_columns=var_columns)
+  if(rolling) df  = df %>%  rolling_aver_7(.,var_columns=var_columns)
+
+  return(df) 
+}
+
+
+```
+
+
+```{r, echo = F}
+
+# adust axix 
+adjust_axis = function(df, xvariable, last_n_days = 30){
   
   if (xvariable == "date")  {
-    df = filter(df, date > Sys.Date() - n)
-  } else {
-    df = filter(df, get(xvariable) > 0)
+   
+     df = filter(df, date > Sys.Date() - last_n_days)
+  }
+  else {
+  
+      df = filter(df, get(xvariable) > 0)
   }
   
+return(df)
+  }
+
+# make a pretty comparative table
+make_table_comparison = function(df, xvariable, yvariable, last_n_days, ...) {
+ 
   
-  df = df %>% pivot_wider(names_from = "country", values_from = yvariable) %>%
+   df = select(df, one_of(yvariable, xvariable, "country","population")) %>% 
+     transform_data(var_columns = yvariable, ...) %>% 
+     adjust_axis(xvariable, last_n_days) %>% 
+     select(-population)
+  
+  df = df %>% 
+    pivot_wider(names_from = "country", values_from = yvariable) %>%
     mutate_at(vars("Portugal", "Spain", "United.Kingdom", "Italy"), function(x) {
       cell_spec(x, bold = T,
                 color = spec_color(x, end = 0.9))
@@ -84,45 +158,54 @@ make_table_comparison = function(df, xvariable, yvariable, n = 10) {
 }
 
 # make a pretty table
-make_table = function(df, n = 30) {
-  df %>%  tail(n) %>%
+make_table = function(df, last_n_days = 10) {
+ 
+   df %>%  
+    tail(last_n_days) %>%
     kable() %>%
     kable_styling()
+  
 }
 
 # make a standard bar chart with parameterized axes
-chart_variable_bar = function(df, xvariable, yvariable, n = 30) {
-  if (xvariable == "date")  {
-    df = filter(df, date > Sys.Date() - n)
-  } else {
-    df = filter(df, get(xvariable) > 0)
-  }
+chart_variable_bar = function(df, xvariable, yvariable, last_n_days = 30, ...) {
+ 
+  #  adjust the data according to the variable 
+   df = df %>% 
+     transform_data(var_columns = yvariable, ...) %>% 
+     adjust_axis(xvariable, last_n_days)
   
   p = ggplot(data = df, aes_string(x = xvariable, y = yvariable, fill =
                                      "country")) +
     geom_bar(stat = "identity", position = position_dodge()) +
     scale_fill_brewer(palette = "Paired") +
-    theme_minimal() + xlab(xvariable) + ylab(yvariable)
+    theme_minimal() + 
+    xlab(xvariable) + 
+    ylab(yvariable)
   
   ggplotly(p)
   
 }
 
+
 # make a standard line chart with parameterized axes
-chart_variable_line = function(df, xvariable, yvariable, n = 30) {
-  if (xvariable == "date")  {
-    df = filter(df, date > Sys.Date() - n)
-  } else {
-    df = filter(df, get(xvariable) > 0)
-  }
+chart_variable_line = function(df, xvariable, yvariable, last_n_days = 10,  ...) {
   
+    #  adjust the data according to the variable 
+   df = df %>% 
+     transform_data(var_columns = yvariable, ...) %>% 
+     adjust_axis(xvariable, last_n_days)
+ 
   p = ggplot(data = df,
              aes_string(x = xvariable, y = yvariable, colour = "country")) +
     geom_line() +
     scale_color_brewer(palette = "Paired") +
-    theme_minimal() + xlab(xvariable) + ylab(yvariable)
+    theme_minimal() + 
+    xlab(xvariable) + 
+    ylab(yvariable)
   
-  ggplotly(p)
+ ggplotly(p)
+ 
 }
 ```
 
@@ -147,7 +230,10 @@ data_json <- fromJSON(response) %>%
   data.frame()
 
 # show data
-data_json %>% select(1:6) %>% make_table(5)
+data_json %>% 
+  select(1:6) %>%
+  make_table(5)
+
 ```
 
 Prepare the data
@@ -184,7 +270,8 @@ data = data %>%
   select(-datapointid)
 
 # show data
-data %>% make_table(10)
+data %>% 
+  make_table(10)
 
 ```
 Now we change formats to ensure:
@@ -222,13 +309,16 @@ data_clean = group_by(data_clean, country) %>%
     previous_recovered  = lag(recovered, n = 1, default = NA),
     daily_deaths  = deaths - previous_deaths,
     daily_confirmed  = confirmed - previous_confirmed,
-    daily_recovered  = recovered - previous_recovered ) 
+    daily_recovered  = recovered - previous_recovered ) %>% 
+  select(-starts_with("previous"))
 
-data_clean %>% select (country, date, starts_with("daily")) %>% make_table(10)
+data_clean %>% 
+  select (country, date, starts_with("daily")) %>% 
+  make_table(10)
 
 ```
 
-3. Compute numbers per population
+3. Add population
 
 ```{r}
 
@@ -242,68 +332,11 @@ data_clean = data_clean %>%
          population = ifelse(country == "United.Kingdom", pop[3], population),
          population = ifelse(country == "Portugal", pop[4], population))
 
-# compute KIPs/milion inhabitants
-data_clean = data_clean %>%
-    mutate(mil_deaths= round(deaths / population, 2),
-    mil_confirmed = round(confirmed / population, 2),
-    mil_recovered = round(recovered / population, 2)
-  )
-
-#show table
-data_clean %>% select (country, date, starts_with("mil")) %>% make_table(10)
 
 ```
 
-4. Compute percentage increases
-
-```{r}
-# compute percentage increases
-data_clean = data_clean %>%
-  mutate(
-    perc_deaths = round(daily_deaths / previous_deaths, 2) * 100,
-    perc_confirmed = round(daily_confirmed / previous_confirmed, 2) *
-      100,
-    perc_recovered = round(daily_recovered / previous_recovered, 2) *
-      100
-  ) %>%   select(-starts_with("previous"))
 
 
-data_clean %>% select (country, date, starts_with("perc")) %>% make_table(10)
-
-```
-
-5. Compute daily differences and 7 day average
-
-```{r}
-
-# compute daily differences in percentages
-data_clean = data_clean %>%
-  mutate(
-    prev_deaths  = lag(daily_deaths, n = 1, default = NA),
-    prev_confirmed  = lag(daily_confirmed, n = 1, default = NA),
-    prev_recovered  = lag(daily_recovered, n = 1, default = NA),
-    per_daily_deaths  = round((deaths - prev_deaths)/prev_deaths,2)*100,
-    per_daily_confirmed  = round((confirmed - prev_confirmed)/prev_confirmed,2)*100,
-    per_daily_recovered  = round((recovered - prev_recovered)/prev_recovered,2)*100) %>% 
-    select(-starts_with("prev"))
-
-data_clean %>% select (country, date, starts_with(c("per_daily"))) %>% make_table(10)
-
-```
-
-```{r}
-
-# compute daily rolling average
-data_clean =  data_clean %>%
-      mutate(roll_mean_daily_deaths = round(rollmean(daily_deaths, 7, align="right",na.pad = T),2),
-            roll_mean_daily_recovered = round(rollmean(daily_recovered, 7, align="right",na.pad = T),2),
-            roll_mean_daily_confirmed = round(rollmean(daily_confirmed, 7, align="right",na.pad = T),2))  
-
-
-# show tables
-data_clean %>% select (country, date, starts_with(c("roll_mean"))) %>% make_table(10)
-
-```
 # Analysis
 
 We can now how the results of the data preparation.
@@ -312,7 +345,10 @@ Daily  confirmed cases
 
 ```{r}
 
-chart_variable_bar(data_clean,"date", "daily_confirmed",10)
+chart_variable_bar(df = data_clean,
+                  xvariable = "date", 
+                  yvariable = "daily_confirmed",
+                  last_n_days = 20)
 
 ```
 
@@ -346,7 +382,9 @@ data_clean = data_clean %>%
   mutate(days_since_lockdown = cumsum(days_since_lockdown))
 
 # show data
-data_clean %>% select(country,date, days_since_lockdown) %>%  make_table(10)
+data_clean %>% 
+  select(country,date, days_since_lockdown) %>%  
+  make_table(10)
 
 ```
 
@@ -355,13 +393,16 @@ data_clean %>% select(country,date, days_since_lockdown) %>%  make_table(10)
 We now do the same for the 50th death.
 
 ```{r}
+
 # find 50th death
 data_clean = data_clean %>%
   mutate(days_after_50_death = ifelse(deaths >= 50, 1, 0)) %>%
   mutate(days_after_50_death = cumsum(days_after_50_death))
 
 # show table
-data_clean %>% select(country, date,days_after_50_death) %>% make_table(10)
+data_clean %>% 
+  select(country, date,days_after_50_death) %>% 
+  make_table(10)
 
 ```
 
@@ -373,7 +414,9 @@ We can do now comparative analysis between countries
 
 ```{r}
 
-chart_variable_line(data_clean, "days_after_50_death", "deaths")
+chart_variable_line(df = data_clean, 
+                    xvariable = "days_after_50_death", 
+                    yvariable = "deaths")
 
 ```
 
@@ -382,7 +425,11 @@ chart_variable_line(data_clean, "days_after_50_death", "deaths")
 
 ```{r}
 
-chart_variable_line(data_clean, "days_since_lockdown", "mil_deaths")
+chart_variable_line(df = data_clean, 
+                    xvariable = "days_since_lockdown",
+                    yvariable =  "deaths", 
+                    rolling = T, 
+                    per_million =T)
 
 ```
 
@@ -390,7 +437,10 @@ chart_variable_line(data_clean, "days_since_lockdown", "mil_deaths")
 
 ```{r}
 
-chart_variable_line(data_clean, "days_since_lockdown", "perc_confirmed")
+chart_variable_line(df = data_clean,
+                    xvariable = "days_since_lockdown", 
+                    yvariable = "confirmed", 
+                    perc_inc = T)
 
 ```
 
@@ -398,24 +448,33 @@ chart_variable_line(data_clean, "days_since_lockdown", "perc_confirmed")
 
 ```{r}
 
-data_clean %>% make_table_comparison("days_since_lockdown","perc_confirmed")
+data_clean %>% 
+  make_table_comparison(xvariable  = "days_since_lockdown",
+                        yvariable  = "confirmed", 
+                        perc_inc = T)
 
 ```
 
-5. Rolling avergage of daily difference in deaths 
+5. Rolling average of daily difference in deaths 
 ```{r}
 
-chart_variable_line(data_clean, "days_since_lockdown", "roll_mean_daily_deaths",n=30)
+chart_variable_line(df = data_clean, 
+                    xvariable = "days_since_lockdown",
+                    yvariable = "daily_deaths",  
+                    rolling  = T)
 
 ```
 
 
 
-6. Rolling avergage of daily difference in confirmed cases 
+6. Rolling average of daily difference in confirmed cases 
 
 ```{r}
 
-chart_variable_line(data_clean, "days_since_lockdown", "roll_mean_daily_confirmed",n=30)
+chart_variable_line(df = data_clean, 
+                    xvariable = "days_since_lockdown", 
+                    yvariable = "daily_confirmed",
+                    rolling = T)
 
 ```
 
