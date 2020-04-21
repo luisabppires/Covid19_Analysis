@@ -107,8 +107,8 @@ df = df %>%
 transform_data = function (df, var_columns,  per_million = F, perc_inc = F, rolling = F ){
 
   if(per_million) df  = df %>%  per_million_inhab(.,var_columns=var_columns)
-  if(perc_inc) df  = df %>%  perc_increase(.,var_columns=var_columns)
   if(rolling) df  = df %>%  rolling_aver_7(.,var_columns=var_columns)
+  if(perc_inc) df  = df %>%  perc_increase(.,var_columns=var_columns)
 
   return(df) 
 }
@@ -453,21 +453,48 @@ We can do now comparative analysis between countries. The folowing flags help de
 * *per_increase = T* indicates the y-variable is measured in percentage increase (%) from the day before
 * *rolling = T* ndicates the y-variable is computed using a 7-day rolling average
 
-## Standard charts
+## Standard questions
 
-* Confirmed cases - trend curve
+* What is the daily increase for confirmed cases and deaths?
+
+```{r}
+
+variables = c("daily_confirmed","daily_deaths")
+
+data_clean %>% transform_data(var_columns = variables, perc_inc = T) %>% 
+  select(date, country, one_of(variables)) %>% 
+  filter(date == max(date)) %>% 
+  make_table()
+  
+
+```
+
+* What is the trend curve for the daily confirmed cases?
 
 ```{r}
 
 chart_variable_facets(df = data_clean, 
                     xvariable = "date", 
                     yvariable = "daily_confirmed",
-                    rolling = F,
+                    rolling = T,
                     last_n_days = 30)
 
 ```
+The daily increase in numbers is below:
 
-* Confirmed deaths - trend curve
+```{r}
+
+data_clean %>% 
+  make_table_comparison(xvariable  = "date",
+                        yvariable  = "daily_confirmed", 
+                        countries = interest_countries$country,
+                        perc_inc = T,
+                        rolling = T,
+                        last_n_days = 2)
+
+```
+
+* What is the trend curve for the daily deaths cases?
 
 ```{r}
 
@@ -479,8 +506,21 @@ chart_variable_facets(df = data_clean,
 
 ```
 
+The daily increase in numbers is below:
 
-* Days since 50th death vs cumulative deaths
+```{r}
+
+data_clean %>% 
+  make_table_comparison(xvariable  = "date",
+                        yvariable  = "daily_deaths", 
+                        countries = interest_countries$country,
+                        perc_inc = T,
+                        rolling = T,
+                        last_n_days = 2)
+
+```
+
+* How do countries compare regarding number of deaths since 50th death reported?
 
 ```{r}
 
@@ -492,46 +532,48 @@ chart_variable_line(df = data_clean,
 ```
 
 
-* Days since 50th death vs cumulative deaths per inhabitants 
+* How do countries compare regarding number of deaths since 50th death reported taking into acccount the population?
 
 ```{r}
 
 chart_variable_line(df = data_clean, 
-                    xvariable = "days_since_lockdown",
+                    xvariable = "days_after_50_death",
                     yvariable =  "deaths", 
                     rolling = T, 
                     per_million =T)
 
 ```
 
+
+
 ## Lock-down affect
 
-* Trend of cases since lock-down
+* Haw the lockdown influence the  % increase in daily confirmed cases?
 
 ```{r}
 
 chart_variable_line(df = data_clean,
                     xvariable = "days_since_lockdown", 
-                    yvariable = "confirmed", 
+                    yvariable = "daily_confirmed", 
                     perc_inc = T, 
                     rolling = T)
 
 ```
 
-* Growth since lock-down as table
+The table version of this chart is below:
 
 ```{r}
 
 data_clean %>% 
   make_table_comparison(xvariable  = "days_since_lockdown",
-                        yvariable  = "confirmed", 
+                        yvariable  = "daily_confirmed", 
                         countries = interest_countries$country,
                         perc_inc = T,
                         rolling = T)
 
 ```
 
-* Rolling average of daily difference in deaths 
+* Haw has the lockdown influence the trend in daily deaths?
 
 ```{r}
 
