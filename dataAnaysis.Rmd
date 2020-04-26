@@ -57,6 +57,7 @@ library(jsonlite)
 library(plotly)
 library(kableExtra)
 library(zoo)
+library(lubridate)
 
 ```
 
@@ -188,7 +189,7 @@ chart_variable_bar = function(df, xvariable, yvariable, last_n_days = 30, ...) {
   
 }
 
-# make a standard bar chart with parameterized axes
+# make a standard line facets chart with parameterized axes
 chart_variable_facets = function(df, xvariable, yvariable, last_n_days = 30, ...) {
  
   #  adjust the data according to the variable 
@@ -203,9 +204,40 @@ chart_variable_facets = function(df, xvariable, yvariable, last_n_days = 30, ...
     theme_minimal() + 
     xlab(xvariable) + 
     ylab(yvariable) +
-      facet_grid(cols=vars(country)) + 
-    theme(axis.text.x=element_text(size=rel(1), angle=45))
+      facet_grid(cols = vars(country)) + 
+    theme(axis.text.x = element_text(size = rel(1), angle = 45))
   
+  ggplotly(p)
+  
+}
+
+ # make a standard line chart with days of the week
+chart_variable_week = function(df, yvariable, last_n_days = 30, ...) {
+ 
+  locale = Sys.setlocale("LC_MESSAGES", 'en_GB.UTF-8')
+  xvariable = "date"
+ 
+   #  adjust the data according to the variable 
+   df = df %>% 
+     transform_data(var_columns = yvariable) %>% 
+     adjust_axis(xvariable, last_n_days) %>% 
+     mutate(weekday = wday(date, label=TRUE,locale = locale,week_start = 1),
+            month = month(date, label=TRUE,locale = locale),
+            week = isoweek(date)) %>% 
+     mutate(week = as.factor(week))
+   
+   
+   p = ggplot(data = df, aes_string(x = "weekday",
+                                    y = yvariable, 
+                                    group = "week", 
+                                    colour ="week")) +
+     geom_line() +
+     scale_colour_brewer(palette = "YlGnBu") +
+     theme_minimal() + 
+     xlab(xvariable) + 
+     ylab(yvariable) +
+     facet_grid(rows = vars(country), scales = "free_y") 
+
   ggplotly(p)
   
 }
@@ -219,11 +251,11 @@ chart_variable_line = function(df, xvariable, yvariable, last_n_days = 10,  ...)
      adjust_axis(xvariable, last_n_days)
  
   p = ggplot(data = df,
-             aes_string(x = xvariable, y = yvariable, colour = "country")) +
-    geom_line() +
-    scale_color_brewer(palette = "Paired") +
-    theme_minimal() + 
-    xlab(xvariable) + 
+             aes_string(x = xvariable, y = yvariable, color = "country")) +
+    geom_line()  +
+    scale_colour_brewer(palette = "Paired") +
+    theme_minimal() +
+    xlab(xvariable) +
     ylab(yvariable)
   
  ggplotly(p)
@@ -294,7 +326,7 @@ data_json %>%
 
 ```
 
-Prepare the data
+## Prepare the data
 
 Here we do the following transformations:
 
@@ -339,40 +371,22 @@ Now we change formats to ensure:
 
 ```{r}
 
-data_clean = data %>%
+data_clean= data %>%
   mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
-  mutate_at(vars(confirmed, deaths, recovered), as.numeric)
+  mutate_at(vars(confirmed, deaths, recovered), as.numeric) %>% 
+  mutate(country = str_replace_all(country, pattern = "\\.", replacement = " "))
 
 ```
 
-We can now compute daily numbers for the countries.
 
-```{r}
-
-data_clean = group_by(data_clean, country) %>%
-  mutate(
-    previous_deaths  = lag(deaths, n = 1, default = NA),
-    previous_confirmed  = lag(confirmed, n = 1, default = NA),
-    previous_recovered  = lag(recovered, n = 1, default = NA),
-    daily_deaths  = deaths - previous_deaths,
-    daily_confirmed  = confirmed - previous_confirmed,
-    daily_recovered  = recovered - previous_recovered ) %>% 
-  select(-starts_with("previous"))
-
-data_clean %>% 
-  select (country, date, starts_with("daily")) %>% 
-  make_table(10)
-
-```
-
-# User-defined parameters
+## User-defined parameters
 
 The user can now select the countries of interest and add extra information. For the countries that are of interest we need to add the population (in millions) and the day of lockdown.
 
 ```{r}
 
 #countries of interest
-country = c("Portugal", "Spain", "Italy", "United.Kingdom", "Germany")
+country = c("Portugal", "Spain", "Italy", "United Kingdom", "Germany")
 
 #  population of countries
 population = c(10.28, 46.94, 60.36, 66.65 , 83.02)
@@ -396,6 +410,23 @@ data_clean = data_clean %>%
 
 ```
 
+Finally, we can  compute daily numbers for the countries.
+
+```{r}
+
+data_clean = group_by(data_clean, country) %>%
+  mutate(
+    daily_deaths  = deaths - lag(deaths, n = 1, default = NA),
+    daily_confirmed  = confirmed - lag(confirmed, n = 1, default = NA),
+    daily_recovered  = recovered - lag(recovered, n = 1, default = NA)
+    ) 
+
+
+data_clean %>% 
+  select (country, date, starts_with("daily")) %>% 
+  make_table(10)
+
+```
 
 # Analysis
 
@@ -476,7 +507,7 @@ data_clean %>% transform_data(var_columns = variables, perc_inc = T) %>%
 chart_variable_facets(df = data_clean, 
                     xvariable = "date", 
                     yvariable = "daily_confirmed",
-                    rolling = T,
+                    rolling = F,
                     last_n_days = 30)
 
 ```
@@ -489,7 +520,7 @@ data_clean %>%
                         yvariable  = "daily_confirmed", 
                         countries = interest_countries$country,
                         perc_inc = T,
-                        rolling = T,
+                        rolling = F,
                         last_n_days = 2)
 
 ```
@@ -501,7 +532,7 @@ data_clean %>%
 chart_variable_facets(df = data_clean, 
                     xvariable = "date", 
                     yvariable = "daily_deaths",
-                    rolling = T,
+                    rolling = F,
                     last_n_days = 30)
 
 ```
@@ -515,7 +546,7 @@ data_clean %>%
                         yvariable  = "daily_deaths", 
                         countries = interest_countries$country,
                         perc_inc = T,
-                        rolling = T,
+                        rolling = F,
                         last_n_days = 2)
 
 ```
@@ -527,7 +558,7 @@ data_clean %>%
 chart_variable_line(df = data_clean, 
                     xvariable = "days_after_50_death", 
                     yvariable = "deaths", 
-                    rolling = T)
+                    rolling = F)
 
 ```
 
@@ -547,6 +578,20 @@ chart_variable_line(df = data_clean,
 
 
 ## Lock-down affect
+
+* What were the numbers whenthe ockdown was announced?
+
+```{r}
+variables = c("confirmed","deaths","confirmed_mil","deaths_mil")
+
+data_clean %>% 
+  mutate(confirmed_mil = round(confirmed/population,1), 
+         deaths_mil = round(deaths/population,1)) %>% 
+  select(days_since_lockdown,date, country, one_of(variables)) %>% 
+  filter(days_since_lockdown == 1) %>% 
+  make_table()
+
+```
 
 * Haw the lockdown influence the  % increase in daily confirmed cases?
 
@@ -579,9 +624,9 @@ data_clean %>%
 
 chart_variable_line(df = data_clean, 
                     xvariable = "days_since_lockdown",
-                    yvariable = "daily_deaths",  
-                    rolling  = T, 
-                    per_million = T)
+                    yvariable = "deaths",  
+                    rolling  = F, 
+                    per_million = F)
 
 ```
 
@@ -599,10 +644,11 @@ chart_variable_line(df = data_clean,
 
 ```
 
-## Frequencies
+## Weekly analysis
 
 In Spain and Italy the numbers show a periodic trend on confirmed cases are noticeable. Below we compute that period.
 
+* Primary frequency for daily confirmd cases
 
 ```{r}
 
@@ -616,7 +662,7 @@ data_clean %>%
 
 ```
 
-We can do the same for the  daily deaths. 
+* Primary frequency for daily deaths
 
 ```{r}
 
@@ -628,3 +674,26 @@ data_clean %>%
   make_table()
 ```
 
+*  Trend in daily confirmed cases by days of the week (impact in reporting delays)
+
+```{r}
+
+chart_variable_week(df = data_clean,
+                     yvariable = "daily_confirmed",
+                     rolling = F,
+                     last_n_days = 30)
+
+
+```
+
+*  Trend in daily deaths by days of the week (impact in reporting delays)
+
+```{r}
+
+chart_variable_week(df = data_clean,
+                     yvariable = "daily_deaths",
+                     rolling = F,
+                     last_n_days = 30)
+
+
+```
